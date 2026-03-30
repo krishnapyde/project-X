@@ -1,0 +1,362 @@
+{
+  "version": "1.0",
+  "domain": "Lending Analytics",
+  "description": "Business Semantic Layer for AI BI Chatbot POC. This document maps natural language business terms to physical Redshift tables, columns, and SQL formulas.",
+  "database": "lending_dw",
+  "schema": "public",
+
+  "tables": {
+    "loan_master": {
+      "description": "Core loan-level table. One row per loan account.",
+      "aliases": ["loans", "loan book", "loan accounts", "all loans"],
+      "primary_key": "loan_id",
+      "columns": {
+        "loan_id":          { "type": "VARCHAR", "description": "Unique loan identifier" },
+        "customer_id":      { "type": "VARCHAR", "description": "Customer/borrower identifier" },
+        "product_type":     { "type": "VARCHAR", "description": "Loan product. Values: HOME_LOAN, PERSONAL_LOAN, SME_LOAN, GOLD_LOAN, VEHICLE_LOAN, EDUCATION_LOAN" },
+        "segment":          { "type": "VARCHAR", "description": "Business segment. Values: RETAIL, SME, CORPORATE, MICROFINANCE" },
+        "branch_id":        { "type": "VARCHAR", "description": "Branch where loan was originated" },
+        "region":           { "type": "VARCHAR", "description": "Geographic region. Values: NORTH, SOUTH, EAST, WEST, CENTRAL" },
+        "loan_status":      { "type": "VARCHAR", "description": "Current status. Values: ACTIVE, NPA, CLOSED, WRITTEN_OFF, RESTRUCTURED, NPA_SUBSTANDARD, NPA_DOUBTFUL, NPA_LOSS" },
+        "sanction_amount":  { "type": "DECIMAL", "description": "Original sanctioned loan amount in INR" },
+        "outstanding_principal": { "type": "DECIMAL", "description": "Current outstanding principal balance in INR" },
+        "disbursed_amount": { "type": "DECIMAL", "description": "Total amount disbursed to borrower in INR" },
+        "disbursement_date":{ "type": "DATE",    "description": "Date of first/full disbursement" },
+        "closure_date":     { "type": "DATE",    "description": "Date loan was closed (NULL if active)" },
+        "maturity_date":    { "type": "DATE",    "description": "Scheduled loan maturity date" },
+        "npa_date":         { "type": "DATE",    "description": "Date loan was classified as NPA (NULL if not NPA)" },
+        "interest_rate":    { "type": "DECIMAL", "description": "Annual interest rate as percentage" },
+        "tenure_months":    { "type": "INTEGER", "description": "Loan tenure in months" },
+        "dpd":              { "type": "INTEGER", "description": "Days Past Due — number of days overdue currently" },
+        "loan_officer_id":  { "type": "VARCHAR", "description": "ID of the relationship manager / loan officer" },
+        "created_date":     { "type": "DATE",    "description": "Record creation date" },
+        "last_updated":     { "type": "TIMESTAMP","description": "Last update timestamp" }
+      }
+    },
+
+    "emi_collections": {
+      "description": "Monthly EMI payment records. One row per EMI due per loan.",
+      "aliases": ["payments", "collections", "EMI", "repayments", "installments"],
+      "primary_key": "collection_id",
+      "columns": {
+        "collection_id":    { "type": "VARCHAR", "description": "Unique collection record ID" },
+        "loan_id":          { "type": "VARCHAR", "description": "Foreign key to loan_master" },
+        "customer_id":      { "type": "VARCHAR", "description": "Customer identifier" },
+        "due_date":         { "type": "DATE",    "description": "EMI due date" },
+        "payment_date":     { "type": "DATE",    "description": "Actual payment received date (NULL if unpaid)" },
+        "emi_amount":       { "type": "DECIMAL", "description": "EMI amount due in INR" },
+        "principal_component": { "type": "DECIMAL", "description": "Principal portion of EMI in INR" },
+        "interest_component":  { "type": "DECIMAL", "description": "Interest portion of EMI in INR" },
+        "amount_paid":      { "type": "DECIMAL", "description": "Actual amount received. 0 if unpaid." },
+        "payment_status":   { "type": "VARCHAR", "description": "Values: PAID, PARTIAL, UNPAID, WAIVED" },
+        "payment_mode":     { "type": "VARCHAR", "description": "Values: NACH, NEFT, CASH, CHEQUE, UPI, ONLINE" },
+        "penalty_charges":  { "type": "DECIMAL", "description": "Late payment penalty in INR" },
+        "month_year":       { "type": "VARCHAR", "description": "Collection month in YYYY-MM format for easy filtering" },
+        "quarter":          { "type": "VARCHAR", "description": "Collection quarter in YYYY-QN format. E.g. 2024-Q3" },
+        "fiscal_year":      { "type": "VARCHAR", "description": "Fiscal year in FY-YYYY format. E.g. FY-2025 (Apr 2024 to Mar 2025)" }
+      }
+    },
+
+    "disbursements": {
+      "description": "Loan disbursement records. One row per disbursement event (loans can have multiple tranches).",
+      "aliases": ["loan disbursements", "sanctioned loans", "new loans", "originations"],
+      "primary_key": "disbursement_id",
+      "columns": {
+        "disbursement_id":  { "type": "VARCHAR", "description": "Unique disbursement ID" },
+        "loan_id":          { "type": "VARCHAR", "description": "Foreign key to loan_master" },
+        "customer_id":      { "type": "VARCHAR", "description": "Customer identifier" },
+        "disbursement_date":{ "type": "DATE",    "description": "Date of disbursement" },
+        "disbursement_amount": { "type": "DECIMAL", "description": "Amount disbursed in this tranche in INR" },
+        "product_type":     { "type": "VARCHAR", "description": "Loan product type" },
+        "segment":          { "type": "VARCHAR", "description": "Business segment" },
+        "branch_id":        { "type": "VARCHAR", "description": "Disbursing branch" },
+        "region":           { "type": "VARCHAR", "description": "Geographic region" },
+        "month_year":       { "type": "VARCHAR", "description": "Disbursement month in YYYY-MM format" },
+        "quarter":          { "type": "VARCHAR", "description": "Disbursement quarter in YYYY-QN format" },
+        "fiscal_year":      { "type": "VARCHAR", "description": "Fiscal year in FY-YYYY format" },
+        "channel":          { "type": "VARCHAR", "description": "Origination channel. Values: BRANCH, DSA, DIGITAL, DIRECT, PARTNER" }
+      }
+    },
+
+    "customers": {
+      "description": "Customer master data. One row per customer.",
+      "aliases": ["borrowers", "clients", "customer master"],
+      "primary_key": "customer_id",
+      "columns": {
+        "customer_id":      { "type": "VARCHAR", "description": "Unique customer ID" },
+        "customer_name":    { "type": "VARCHAR", "description": "Full customer name" },
+        "customer_type":    { "type": "VARCHAR", "description": "Values: INDIVIDUAL, COMPANY, PARTNERSHIP, LLP" },
+        "city":             { "type": "VARCHAR", "description": "Customer city" },
+        "state":            { "type": "VARCHAR", "description": "Customer state" },
+        "credit_score":     { "type": "INTEGER", "description": "Latest credit bureau score (300-900)" },
+        "vintage_months":   { "type": "INTEGER", "description": "Months since first loan with the institution" },
+        "risk_category":    { "type": "VARCHAR", "description": "Internal risk rating. Values: LOW, MEDIUM, HIGH, VERY_HIGH" },
+        "kyc_status":       { "type": "VARCHAR", "description": "Values: VERIFIED, PENDING, REJECTED" }
+      }
+    },
+
+    "branches": {
+      "description": "Branch master data.",
+      "aliases": ["branch", "offices", "locations"],
+      "primary_key": "branch_id",
+      "columns": {
+        "branch_id":        { "type": "VARCHAR", "description": "Unique branch code" },
+        "branch_name":      { "type": "VARCHAR", "description": "Branch display name" },
+        "city":             { "type": "VARCHAR", "description": "Branch city" },
+        "state":            { "type": "VARCHAR", "description": "Branch state" },
+        "region":           { "type": "VARCHAR", "description": "Geographic region: NORTH, SOUTH, EAST, WEST, CENTRAL" },
+        "branch_type":      { "type": "VARCHAR", "description": "Values: MAIN, MICRO, DIGITAL, SATELLITE" },
+        "is_active":        { "type": "BOOLEAN", "description": "Whether branch is currently operational" }
+      }
+    }
+  },
+
+  "metrics": {
+    "npa_rate": {
+      "label": "NPA Rate",
+      "aliases": ["non-performing asset rate", "bad loan rate", "NPA percentage", "NPA ratio"],
+      "description": "Percentage of loan accounts classified as NPA out of total active loan accounts.",
+      "unit": "percentage",
+      "formula": "COUNT(CASE WHEN loan_status IN ('NPA','NPA_SUBSTANDARD','NPA_DOUBTFUL','NPA_LOSS') THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0)",
+      "source_table": "loan_master",
+      "rbi_definition": "A loan is classified as NPA when interest or principal is overdue for more than 90 days.",
+      "example_sql": "SELECT segment, COUNT(CASE WHEN loan_status IN ('NPA','NPA_SUBSTANDARD','NPA_DOUBTFUL','NPA_LOSS') THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0) AS npa_rate FROM loan_master GROUP BY segment"
+    },
+
+    "npa_amount": {
+      "label": "NPA Outstanding Amount",
+      "aliases": ["NPA book", "bad loan outstanding", "NPA portfolio", "gross NPA"],
+      "description": "Total outstanding principal balance of all NPA accounts in INR.",
+      "unit": "INR",
+      "formula": "SUM(CASE WHEN loan_status IN ('NPA','NPA_SUBSTANDARD','NPA_DOUBTFUL','NPA_LOSS') THEN outstanding_principal ELSE 0 END)",
+      "source_table": "loan_master",
+      "example_sql": "SELECT region, SUM(CASE WHEN loan_status IN ('NPA','NPA_SUBSTANDARD','NPA_DOUBTFUL','NPA_LOSS') THEN outstanding_principal ELSE 0 END) AS npa_amount FROM loan_master GROUP BY region"
+    },
+
+    "total_disbursement": {
+      "label": "Total Disbursement",
+      "aliases": ["disbursed amount", "loans disbursed", "sanctioned and disbursed", "new loan volume", "originations"],
+      "description": "Total amount disbursed to borrowers in INR for a given period.",
+      "unit": "INR",
+      "formula": "SUM(disbursement_amount)",
+      "source_table": "disbursements",
+      "time_filter_column": "disbursement_date",
+      "example_sql": "SELECT quarter, segment, SUM(disbursement_amount) AS total_disbursement FROM disbursements WHERE fiscal_year = 'FY-2025' GROUP BY quarter, segment"
+    },
+
+    "disbursement_count": {
+      "label": "Number of Loans Disbursed",
+      "aliases": ["loan count", "number of loans", "loans originated", "new accounts"],
+      "description": "Count of distinct loan disbursements in a given period.",
+      "unit": "count",
+      "formula": "COUNT(DISTINCT loan_id)",
+      "source_table": "disbursements",
+      "time_filter_column": "disbursement_date"
+    },
+
+    "collection_efficiency": {
+      "label": "Collection Efficiency",
+      "aliases": ["collection rate", "EMI collection rate", "payment efficiency", "recovery rate"],
+      "description": "Percentage of EMI amount actually collected vs total EMI amount due in a period.",
+      "unit": "percentage",
+      "formula": "SUM(amount_paid) * 100.0 / NULLIF(SUM(emi_amount), 0)",
+      "source_table": "emi_collections",
+      "time_filter_column": "due_date",
+      "example_sql": "SELECT quarter, SUM(amount_paid) * 100.0 / NULLIF(SUM(emi_amount), 0) AS collection_efficiency FROM emi_collections WHERE quarter = '2024-Q3' GROUP BY quarter"
+    },
+
+    "total_emi_collected": {
+      "label": "Total EMI Collected",
+      "aliases": ["total collections", "amount collected", "EMI received", "total repayments"],
+      "description": "Total EMI amount actually received from borrowers in INR.",
+      "unit": "INR",
+      "formula": "SUM(amount_paid)",
+      "source_table": "emi_collections",
+      "time_filter_column": "payment_date"
+    },
+
+    "overdue_amount": {
+      "label": "Overdue Amount",
+      "aliases": ["past due amount", "arrears", "EMI overdue", "unpaid EMI"],
+      "description": "Total EMI amount that is unpaid past its due date.",
+      "unit": "INR",
+      "formula": "SUM(CASE WHEN payment_status IN ('UNPAID','PARTIAL') THEN (emi_amount - amount_paid) ELSE 0 END)",
+      "source_table": "emi_collections"
+    },
+
+    "par30": {
+      "label": "PAR 30",
+      "aliases": ["portfolio at risk 30", "30 day overdue", "30+ dpd", "PAR30"],
+      "description": "Portfolio at Risk — outstanding principal of loans with DPD > 30 days, as % of total outstanding.",
+      "unit": "percentage",
+      "formula": "SUM(CASE WHEN dpd > 30 THEN outstanding_principal ELSE 0 END) * 100.0 / NULLIF(SUM(outstanding_principal), 0)",
+      "source_table": "loan_master"
+    },
+
+    "par90": {
+      "label": "PAR 90",
+      "aliases": ["portfolio at risk 90", "90 day overdue", "90+ dpd", "PAR90"],
+      "description": "Portfolio at Risk — outstanding principal of loans with DPD > 90 days (pre-NPA stage) as % of total outstanding.",
+      "unit": "percentage",
+      "formula": "SUM(CASE WHEN dpd > 90 THEN outstanding_principal ELSE 0 END) * 100.0 / NULLIF(SUM(outstanding_principal), 0)",
+      "source_table": "loan_master"
+    },
+
+    "outstanding_portfolio": {
+      "label": "Total Outstanding Portfolio",
+      "aliases": ["outstanding book", "loan book size", "total outstanding", "AUM", "assets under management"],
+      "description": "Total outstanding principal balance across all active loans in INR.",
+      "unit": "INR",
+      "formula": "SUM(outstanding_principal)",
+      "source_table": "loan_master",
+      "default_filter": "loan_status = 'ACTIVE'"
+    },
+
+    "average_ticket_size": {
+      "label": "Average Ticket Size",
+      "aliases": ["average loan size", "average disbursement", "mean loan amount", "ticket size"],
+      "description": "Average disbursement amount per loan.",
+      "unit": "INR",
+      "formula": "AVG(disbursement_amount)",
+      "source_table": "disbursements"
+    },
+
+    "yield": {
+      "label": "Portfolio Yield",
+      "aliases": ["average interest rate", "yield", "interest yield", "weighted average rate"],
+      "description": "Weighted average interest rate across the active loan portfolio.",
+      "unit": "percentage",
+      "formula": "SUM(interest_rate * outstanding_principal) / NULLIF(SUM(outstanding_principal), 0)",
+      "source_table": "loan_master",
+      "default_filter": "loan_status = 'ACTIVE'"
+    }
+  },
+
+  "dimensions": {
+    "time": {
+      "description": "Time-based filters and groupings.",
+      "mappings": {
+        "this month":       "month_year = TO_CHAR(CURRENT_DATE, 'YYYY-MM')",
+        "last month":       "month_year = TO_CHAR(CURRENT_DATE - INTERVAL '1 month', 'YYYY-MM')",
+        "this quarter":     "quarter = CONCAT(EXTRACT(YEAR FROM CURRENT_DATE), '-Q', EXTRACT(QUARTER FROM CURRENT_DATE))",
+        "last quarter":     "Use DATEADD logic to get previous quarter",
+        "Q1":               "quarter LIKE '%-Q1'",
+        "Q2":               "quarter LIKE '%-Q2'",
+        "Q3":               "quarter LIKE '%-Q3'",
+        "Q4":               "quarter LIKE '%-Q4'",
+        "this year":        "fiscal_year = CONCAT('FY-', EXTRACT(YEAR FROM CURRENT_DATE))",
+        "FY2025":           "fiscal_year = 'FY-2025'",
+        "year to date":     "disbursement_date BETWEEN '2024-04-01' AND CURRENT_DATE",
+        "note":             "Fiscal year runs April to March. FY-2025 = April 2024 to March 2025."
+      }
+    },
+
+    "segment": {
+      "description": "Business segment filter on loan_master and disbursements.",
+      "column": "segment",
+      "values": {
+        "RETAIL":       ["retail", "individual", "personal loans segment", "consumer"],
+        "SME":          ["SME", "small business", "MSME", "small and medium"],
+        "CORPORATE":    ["corporate", "large corporate", "big companies"],
+        "MICROFINANCE": ["microfinance", "MFI", "micro", "SHG", "joint liability"]
+      }
+    },
+
+    "product": {
+      "description": "Loan product type filter.",
+      "column": "product_type",
+      "values": {
+        "HOME_LOAN":       ["home loan", "housing loan", "mortgage", "HL"],
+        "PERSONAL_LOAN":   ["personal loan", "PL", "unsecured loan"],
+        "SME_LOAN":        ["SME loan", "business loan", "working capital", "WCTL"],
+        "GOLD_LOAN":       ["gold loan", "GL"],
+        "VEHICLE_LOAN":    ["vehicle loan", "auto loan", "car loan", "two-wheeler"],
+        "EDUCATION_LOAN":  ["education loan", "student loan"]
+      }
+    },
+
+    "region": {
+      "description": "Geographic region filter.",
+      "column": "region",
+      "values": {
+        "NORTH":   ["north", "northern", "Delhi", "UP", "Punjab"],
+        "SOUTH":   ["south", "southern", "Chennai", "Bangalore", "Hyderabad", "Kerala"],
+        "EAST":    ["east", "eastern", "Kolkata", "Odisha"],
+        "WEST":    ["west", "western", "Mumbai", "Gujarat", "Pune"],
+        "CENTRAL": ["central", "Madhya Pradesh", "Chhattisgarh"]
+      }
+    },
+
+    "loan_status": {
+      "description": "Current status of loans.",
+      "column": "loan_status",
+      "values": {
+        "ACTIVE":           ["active", "performing", "live", "current"],
+        "NPA":              ["NPA", "non-performing", "bad loans", "defaulted"],
+        "NPA_SUBSTANDARD":  ["substandard", "sub-standard NPA"],
+        "NPA_DOUBTFUL":     ["doubtful", "doubtful NPA"],
+        "NPA_LOSS":         ["loss", "loss assets", "fully provided"],
+        "WRITTEN_OFF":      ["written off", "write-off", "written-off"],
+        "CLOSED":           ["closed", "repaid", "settled", "completed"],
+        "RESTRUCTURED":     ["restructured", "OTR", "one-time restructuring"]
+      }
+    },
+
+    "channel": {
+      "description": "Loan origination channel (in disbursements table).",
+      "column": "channel",
+      "values": {
+        "BRANCH":   ["branch", "walk-in", "in-branch"],
+        "DSA":      ["DSA", "direct sales agent", "agent"],
+        "DIGITAL":  ["digital", "online", "app", "website"],
+        "DIRECT":   ["direct", "telesales"],
+        "PARTNER":  ["partner", "co-lending", "BC", "business correspondent"]
+      }
+    }
+  },
+
+  "business_rules": {
+    "npa_classification": "A loan is classified as NPA when interest or principal instalment is overdue for more than 90 days. In the system, loan_status IN ('NPA', 'NPA_SUBSTANDARD', 'NPA_DOUBTFUL', 'NPA_LOSS') represents all NPA categories.",
+    "fiscal_year": "Financial year runs from April 1 to March 31. FY-2025 means April 1, 2024 to March 31, 2025.",
+    "active_loans": "For portfolio metrics, always filter loan_status = 'ACTIVE' unless the question is about NPA, closed, or written-off loans.",
+    "collection_period": "For collection efficiency, filter on due_date for the period — not payment_date — as we measure what was due vs what was paid.",
+    "dpd_definition": "DPD (Days Past Due) is the number of days since the oldest unpaid EMI was due. DPD > 90 triggers NPA classification per RBI guidelines.",
+    "par_definition": "PAR (Portfolio at Risk) is measured as outstanding principal of stressed loans / total outstanding. PAR30 = DPD > 30, PAR90 = DPD > 90.",
+    "written_off_exclusion": "Written-off accounts are excluded from NPA rate calculations for regulatory NPA reporting, but included in gross NPA calculations.",
+    "currency": "All monetary amounts are in Indian Rupees (INR). Never infer USD or any other currency."
+  },
+
+  "common_joins": {
+    "loan_master_to_emi": "JOIN emi_collections ec ON lm.loan_id = ec.loan_id",
+    "loan_master_to_disbursements": "JOIN disbursements d ON lm.loan_id = d.loan_id",
+    "loan_master_to_customers": "JOIN customers c ON lm.customer_id = c.customer_id",
+    "loan_master_to_branches": "JOIN branches b ON lm.branch_id = b.branch_id"
+  },
+
+  "sample_nl_to_sql": [
+    {
+      "question": "What is the NPA rate for the SME segment in Q3 2024?",
+      "sql": "SELECT COUNT(CASE WHEN loan_status IN ('NPA','NPA_SUBSTANDARD','NPA_DOUBTFUL','NPA_LOSS') THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0) AS npa_rate FROM loan_master WHERE segment = 'SME'"
+    },
+    {
+      "question": "Show me total disbursements by region for FY2025",
+      "sql": "SELECT region, SUM(disbursement_amount) AS total_disbursement FROM disbursements WHERE fiscal_year = 'FY-2025' GROUP BY region ORDER BY total_disbursement DESC"
+    },
+    {
+      "question": "What was the collection efficiency last quarter?",
+      "sql": "SELECT SUM(amount_paid) * 100.0 / NULLIF(SUM(emi_amount), 0) AS collection_efficiency FROM emi_collections WHERE quarter = '2024-Q3'"
+    },
+    {
+      "question": "Which product has the highest NPA amount?",
+      "sql": "SELECT product_type, SUM(CASE WHEN loan_status IN ('NPA','NPA_SUBSTANDARD','NPA_DOUBTFUL','NPA_LOSS') THEN outstanding_principal ELSE 0 END) AS npa_amount FROM loan_master GROUP BY product_type ORDER BY npa_amount DESC LIMIT 1"
+    },
+    {
+      "question": "What is the PAR30 for the south region?",
+      "sql": "SELECT SUM(CASE WHEN dpd > 30 THEN outstanding_principal ELSE 0 END) * 100.0 / NULLIF(SUM(outstanding_principal), 0) AS par30 FROM loan_master WHERE region = 'SOUTH'"
+    },
+    {
+      "question": "How many home loans were disbursed this year?",
+      "sql": "SELECT COUNT(DISTINCT loan_id) AS loan_count, SUM(disbursement_amount) AS total_amount FROM disbursements WHERE product_type = 'HOME_LOAN' AND fiscal_year = 'FY-2025'"
+    }
+  ]
+}
